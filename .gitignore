@@ -1,0 +1,12 @@
+.gradle/
+.kotlin/
+.idea/
+local.properties
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.imlsample-UI.jpg
+system_architecture_document.md
+system_design_document.md
+sample-UI.jpg
