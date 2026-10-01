@@ -3,6 +3,7 @@ package com.numa.filemanager.core.filesystem
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
 import androidx.core.content.FileProvider
 import com.numa.filemanager.core.database.NumaDao
@@ -128,20 +129,27 @@ class FileSystemRepository(
 
     suspend fun copy(source: DocumentFile, destination: DocumentFile, outputName: String = source.name ?: "file"): Result<DocumentFile> = withContext(Dispatchers.IO) {
         runCatching {
-            require(!source.isDirectory) { "Only files can be copied by this action." }
-            val output = requireNotNull(destination.createFile(source.type ?: "application/octet-stream", outputName))
-            try {
-                openInputStream(source.uri).use { input ->
-                    requireNotNull(input) { "The selected file could not be opened." }
-                    openOutputStream(output.uri).use { stream ->
-                        requireNotNull(stream) { "The destination could not be written." }
-                        input.copyTo(stream)
-                    }
-                }
+            val safeOutputName = sanitizeCopyName(outputName, source.type)
+            if (source.isDirectory) {
+                val output = requireNotNull(destination.createDirectory(safeOutputName))
+                source.listFiles().forEach { child -> copyEntry(child, output) }
                 output
-            } catch (error: Exception) {
-                output.delete()
-                throw error
+            } else {
+                val mimeType = source.type ?: guessMimeType(safeOutputName) ?: "application/octet-stream"
+                val output = requireNotNull(destination.createFile(mimeType, safeOutputName))
+                try {
+                    openInputStream(source.uri).use { input ->
+                        requireNotNull(input) { "The selected file could not be opened." }
+                        openOutputStream(output.uri).use { stream ->
+                            requireNotNull(stream) { "The destination could not be written." }
+                            input.copyTo(stream)
+                        }
+                    }
+                    output
+                } catch (error: Exception) {
+                    output.delete()
+                    throw error
+                }
             }
         }
     }
@@ -149,23 +157,62 @@ class FileSystemRepository(
     suspend fun move(source: DocumentFile, destination: DocumentFile): Result<DocumentFile> = withContext(Dispatchers.IO) {
         runCatching {
             val output = copy(source, destination).getOrThrow()
-            if (!source.delete()) {
+            if (!deleteEntry(source)) {
                 output.delete()
                 error("The copy was created, but the original could not be removed.")
             }
-            dao.moveFileTags(source.uri.toString(), output.uri.toString())
+            if (!source.isDirectory) dao.moveFileTags(source.uri.toString(), output.uri.toString())
             output
         }
+    }
+
+    private fun copyEntry(source: DocumentFile, destination: DocumentFile): DocumentFile {
+        if (source.isDirectory) {
+            val output = requireNotNull(destination.createDirectory(source.name ?: "folder"))
+            source.listFiles().forEach { child -> copyEntry(child, output) }
+            return output
+        }
+        val name = sanitizeCopyName(source.name ?: "file", source.type)
+        val mimeType = source.type ?: guessMimeType(name) ?: "application/octet-stream"
+        val output = requireNotNull(destination.createFile(mimeType, name))
+        openInputStream(source.uri).use { input ->
+            requireNotNull(input) { "The selected file could not be opened." }
+            openOutputStream(output.uri).use { stream ->
+                requireNotNull(stream) { "The destination could not be written." }
+                input.copyTo(stream)
+            }
+        }
+        return output
+    }
+
+    private fun deleteEntry(file: DocumentFile): Boolean {
+        if (file.isDirectory) file.listFiles().forEach { child -> if (!deleteEntry(child)) return false }
+        return file.delete()
     }
 
     suspend fun rename(file: DocumentFile, name: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             require(!file.isDirectory) { "Folder renaming is not available in this view." }
-            require(name.isNotBlank() && name.none { it == '/' || it == '\\' }) { "Enter a valid file name." }
-            check(file.renameTo(name)) { "This storage provider does not support renaming." }
-            file.parentFile?.findFile(name)?.uri?.toString() ?: file.uri.toString()
+            val safeName = name.trim()
+            require(safeName.isNotBlank() && safeName.none { it == '/' || it == '\\' }) { "Enter a valid file name." }
+            check(file.renameTo(safeName)) { "This storage provider does not support renaming." }
+            file.parentFile?.findFile(safeName)?.uri?.toString() ?: file.uri.toString()
         }
     }
+
+    private fun sanitizeCopyName(fileName: String, mimeType: String?): String {
+        val name = fileName.trim()
+        if (name.isEmpty()) return "file"
+        val extension = name.substringAfterLast('.', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return name
+        val expected = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType?.lowercase())
+        if (expected.isNullOrBlank()) return name
+        return if (expected.equals(extension, ignoreCase = true)) name.substringBeforeLast('.', missingDelimiterValue = name) else name
+    }
+
+    private fun guessMimeType(fileName: String): String? = runCatching {
+        val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return null
+        MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
+    }.getOrNull()
 
     suspend fun softDelete(file: DocumentFile, originalParent: DocumentFile, root: DocumentFile): Result<TrashEntity> = withContext(Dispatchers.IO) {
         runCatching {

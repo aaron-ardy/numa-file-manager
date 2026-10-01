@@ -73,6 +73,9 @@ interface NumaDao {
     @Query("UPDATE tags SET tag_name = :name WHERE id = :tagId")
     suspend fun renameTag(tagId: Int, name: String)
 
+    @Query("UPDATE tags SET tag_name = :name, color_hex = :colorHex WHERE id = :tagId")
+    suspend fun updateTag(tagId: Int, name: String, colorHex: String)
+
     @Query("SELECT * FROM recent_files ORDER BY opened_at DESC LIMIT 100")
     fun observeRecentFiles(): Flow<List<RecentFileEntity>>
 

@@ -60,6 +60,7 @@ fun TagManagementScreen(state: NumaUiState, viewModel: NumaViewModel, modifier: 
     var colorHex by rememberSaveable { mutableStateOf(tagSwatches.first()) }
     var editingTag by remember { mutableStateOf<com.numa.filemanager.core.database.TagEntity?>(null) }
     var editName by rememberSaveable { mutableStateOf("") }
+    var editColorHex by rememberSaveable { mutableStateOf(tagSwatches.first()) }
     var showCreator by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -99,8 +100,7 @@ fun TagManagementScreen(state: NumaUiState, viewModel: NumaViewModel, modifier: 
                                 Text(tag.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                                 Text("${state.tagCounts[tag.id] ?: 0} files", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Text(tag.colorHex, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            IconButton(onClick = { editingTag = tag; editName = tag.name }) { Icon(Icons.Outlined.Edit, contentDescription = "Edit ${tag.name}") }
+                            IconButton(onClick = { editingTag = tag; editName = tag.name; editColorHex = tag.colorHex }) { Icon(Icons.Outlined.Edit, contentDescription = "Edit ${tag.name}") }
                             IconButton(onClick = { viewModel.deleteTag(tag) }) { Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete ${tag.name}") }
                         }
                     }
@@ -167,19 +167,55 @@ fun TagManagementScreen(state: NumaUiState, viewModel: NumaViewModel, modifier: 
     editingTag?.let { tag ->
         AlertDialog(
             onDismissRequest = { editingTag = null },
-            title = { Text("Rename tag") },
+            title = { Text("Edit tag") },
             text = {
-                OutlinedTextField(
-                    value = editName,
-                    onValueChange = { editName = it.take(20) },
-                    label = { Text("Tag name") },
-                    singleLine = true
-                )
+                Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+                    Text("Tags are for individual files", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it.take(20) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Tag name") },
+                        singleLine = true,
+                        supportingText = { Text("${editName.length}/20") }
+                    )
+                    Spacer(Modifier.height(9.dp))
+                    Text("COLOR", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(7.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        tagSwatches.forEach { color ->
+                            val parsed = Color(AndroidColor.parseColor(color))
+                            Surface(
+                                modifier = Modifier.size(34.dp).clip(CircleShape).clickable { editColorHex = color },
+                                color = parsed,
+                                shape = CircleShape,
+                                border = if (editColorHex == color) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface) else null
+                            ) {}
+                        }
+                    }
+                    Spacer(Modifier.height(9.dp))
+                    OutlinedTextField(
+                        value = editColorHex,
+                        onValueChange = { editColorHex = it.take(7).uppercase() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Custom hex color") },
+                        singleLine = true,
+                        leadingIcon = {
+                            val fallbackColor = MaterialTheme.colorScheme.outline
+                            val swatch = remember(editColorHex) { runCatching { Color(AndroidColor.parseColor(editColorHex)) }.getOrDefault(fallbackColor) }
+                            Surface(Modifier.size(18.dp), color = swatch, shape = CircleShape) {}
+                        }
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
-                    onClick = { viewModel.renameTag(tag, editName); editingTag = null },
-                    enabled = editName.isNotBlank() && editName.trim() != tag.name
+                    onClick = {
+                        viewModel.updateTag(tag, editName, editColorHex)
+                        editingTag = null
+                    },
+                    enabled = editName.isNotBlank() && editColorHex.matches(Regex("#[0-9A-F]{6}")) && (editName.trim() != tag.name || editColorHex != tag.colorHex)
                 ) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { editingTag = null }) { Text("Cancel") } }

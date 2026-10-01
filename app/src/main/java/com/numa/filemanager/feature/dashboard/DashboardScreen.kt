@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -114,25 +115,34 @@ fun DashboardScreen(
                 }
             }
         } else {
-            val recent = state.recentFiles.take(6)
+            val recent = state.recentFiles.take(5)
             if (recent.isEmpty()) {
                 item { Text("Files you open will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 18.dp)) }
             } else {
-                items(recent, key = { it.uri.toString() }) { file ->
-                    FileRow(
-                        file = file,
-                        tags = state.recentFileTags[file.uri.toString()].orEmpty(),
-                        onClick = { viewModel.openFile(file.document) },
-                        onLongClick = { viewModel.showQuickPeek(file.document) },
-                        onSelect = { viewModel.toggleSelection(file.document) },
-                        selected = file.uri.toString() in state.selectedUris,
-                        onQuickPeek = { viewModel.showQuickPeek(file.document) },
-                        onEditTags = { viewModel.selectFileForTags(file.document) },
-                        onPin = { viewModel.pin(file.document) },
-                        onDelete = { viewModel.requestDelete(file.document) },
-                        onShare = { viewModel.shareFile(file.document) },
-                        onRename = { viewModel.requestRename(file.document) }
-                    )
+                item {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        items(recent, key = { it.uri.toString() }) { file ->
+                            FileRow(
+                                file = file,
+                                tags = state.recentFileTags[file.uri.toString()].orEmpty(),
+                                onClick = { viewModel.openFile(file.document) },
+                                onLongClick = { viewModel.showQuickPeek(file.document) },
+                                onSelect = { viewModel.toggleSelection(file.document) },
+                                selected = file.uri.toString() in state.selectedUris,
+                                onQuickPeek = { viewModel.showQuickPeek(file.document) },
+                                onEditTags = { viewModel.selectFileForTags(file.document) },
+                                onPin = { viewModel.pin(file.document) },
+                                onDelete = { viewModel.requestDelete(file.document) },
+                                onShare = { viewModel.shareFile(file.document) },
+                                onRename = { viewModel.requestRename(file.document) },
+                                showSelectionControl = false,
+                                showActions = false
+                            )
+                        }
+                    }
                 }
             }
         }

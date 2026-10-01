@@ -47,6 +47,21 @@ data class DestructiveConfirmation(
     val action: DestructiveAction
 )
 
+enum class ClipboardMode { COPY, CUT }
+
+data class PendingFileOperation(
+    val mode: ClipboardMode,
+    val files: List<DocumentFile>,
+    val sourceFolderUri: String?
+)
+
+data class FileConflict(
+    val fileName: String,
+    val file: DocumentFile,
+    val destination: DocumentFile,
+    val mode: ClipboardMode
+)
+
 data class NumaUiState(
     val destination: Destination = Destination.Home,
     val rootUri: Uri? = null,
@@ -84,6 +99,8 @@ data class NumaUiState(
     val quickPeekText: String? = null,
     val quickPeekMetadata: String? = null,
     val selectedUris: Set<String> = emptySet(),
+    val pendingFileOperation: PendingFileOperation? = null,
+    val fileConflict: FileConflict? = null,
     val message: String? = null,
     val confirmation: DestructiveConfirmation? = null,
     val isLoading: Boolean = false
@@ -149,7 +166,7 @@ class NumaViewModel(application: Application) : AndroidViewModel(application) {
             currentFolder = rootDocument
             folderStack.clear()
             rootDocument?.let(folderStack::add)
-            mutableState.update { it.copy(rootUri = uri, destination = Destination.Files, category = null) }
+            mutableState.update { it.copy(rootUri = uri, destination = Destination.Home, category = null) }
             refresh()
         }
     }
@@ -457,6 +474,16 @@ class NumaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { dao.renameTag(tag.id, cleanName); persistTagBackup() }
     }
 
+    fun updateTag(tag: TagEntity, newName: String, newColorHex: String) {
+        val cleanName = newName.trim()
+        val cleanHex = newColorHex.trim()
+        if (cleanName.isEmpty() || cleanName.length > 20 || !cleanHex.matches(Regex("#[0-9A-Fa-f]{6}"))) {
+            showMessage("Enter a valid tag name and 6-digit hex color.")
+            return
+        }
+        viewModelScope.launch { dao.updateTag(tag.id, cleanName, cleanHex.uppercase()); persistTagBackup() }
+    }
+
     fun openFile(file: DocumentFile) {
         if (file.isDirectory) {
             openFolder(file)
@@ -522,6 +549,81 @@ class NumaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearSelection() = mutableState.update { it.copy(selectedUris = emptySet()) }
+
+    fun stageSelection(mode: ClipboardMode) {
+        val selected = mutableState.value.items
+            .filter { it.uri.toString() in mutableState.value.selectedUris }
+            .map { it.document }
+        stageFiles(selected, mode)
+    }
+
+    fun stageFiles(files: List<DocumentFile>, mode: ClipboardMode) {
+        val selected = files.distinctBy { it.uri.toString() }
+        if (selected.isEmpty()) {
+            showMessage("Select at least one file to ${if (mode == ClipboardMode.COPY) "copy" else "cut"}.")
+            return
+        }
+        mutableState.update {
+            it.copy(
+                pendingFileOperation = PendingFileOperation(mode, selected, currentFolder?.uri?.toString()),
+                selectedUris = emptySet()
+            )
+        }
+        showMessage(if (mode == ClipboardMode.COPY) "Files ready to copy. Open a folder and paste." else "Files ready to move. Open a folder and paste.")
+    }
+
+    fun cancelPendingFileOperation() = mutableState.update { it.copy(pendingFileOperation = null, fileConflict = null) }
+
+    fun pasteIntoCurrentFolder() {
+        val destination = currentFolder ?: return
+        val operation = mutableState.value.pendingFileOperation ?: return
+        if (operation.sourceFolderUri == destination.uri.toString()) {
+            cancelPendingFileOperation()
+            showMessage("Copy or move cancelled in the original folder.")
+            return
+        }
+        viewModelScope.launch {
+            var completed = 0
+            var failed = false
+            operation.files.forEach { file ->
+                if (destination.findFile(file.name ?: "") != null) {
+                    mutableState.update { it.copy(fileConflict = FileConflict(file.name ?: "File", file, destination, operation.mode)) }
+                    return@launch
+                }
+                val result = if (operation.mode == ClipboardMode.CUT) {
+                    fileSystem.move(file, destination)
+                } else {
+                    fileSystem.copy(file, destination)
+                }
+                if (result.isSuccess) completed++ else failed = true
+            }
+            if (operation.mode == ClipboardMode.CUT) persistTagBackup()
+            mutableState.update { it.copy(pendingFileOperation = null) }
+            refresh()
+            showMessage(if (failed) "$completed file(s) pasted; some items could not be processed." else "$completed file(s) pasted")
+        }
+    }
+
+    fun resolveFileConflict(replace: Boolean) {
+        val conflict = mutableState.value.fileConflict ?: return
+        val operation = mutableState.value.pendingFileOperation ?: return
+        mutableState.update { it.copy(fileConflict = null, pendingFileOperation = null) }
+        if (!replace) {
+            showMessage("Copy or move skipped.")
+            return
+        }
+        viewModelScope.launch {
+            conflict.destination.findFile(conflict.fileName)?.delete()
+            val result = if (conflict.mode == ClipboardMode.CUT) {
+                fileSystem.move(conflict.file, conflict.destination)
+            } else {
+                fileSystem.copy(conflict.file, conflict.destination)
+            }
+            if (conflict.mode == ClipboardMode.CUT && result.isSuccess) persistTagBackup()
+            refresh()
+            showMessage(if (result.isSuccess) "File replaced." else "Could not replace the existing file.")
+        }
+    }
 
     fun requestDelete(file: DocumentFile) {
         mutableState.update {
@@ -604,6 +706,22 @@ class NumaViewModel(application: Application) : AndroidViewModel(application) {
             }
             getApplication<Application>().startActivity(Intent.createChooser(intent, "Share file").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }.onFailure { showMessage("This file could not be shared.") }
+    }
+
+    fun shareFiles(files: List<DocumentFile>) {
+        val shareable = files.filterNot { it.isDirectory }
+        if (shareable.isEmpty()) {
+            showMessage("Folders cannot be shared here.")
+            return
+        }
+        runCatching {
+            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "*/*"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(shareable.map { fileSystem.uriForExternal(it.uri) }))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            getApplication<Application>().startActivity(Intent.createChooser(intent, "Share files").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { showMessage("These files could not be shared.") }
     }
 
     fun pin(folder: DocumentFile) {

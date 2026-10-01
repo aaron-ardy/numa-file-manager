@@ -35,18 +35,6 @@ class MainActivity : ComponentActivity() {
             val themeRepository = remember { ThemeRepository(applicationContext) }
             val theme by themeRepository.selectedTheme.collectAsState(initial = AppThemeRegistry.default)
             val scope = rememberCoroutineScope()
-            var pendingMove by remember { mutableStateOf(false) }
-            val destinationPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-                if (uri != null) {
-                    runCatching {
-                        contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        )
-                    }
-                    viewModel.copySelectionTo(uri, pendingMove)
-                }
-            }
             val legacyStoragePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
                 val granted = grants[android.Manifest.permission.READ_EXTERNAL_STORAGE] == true &&
                     grants[android.Manifest.permission.WRITE_EXTERNAL_STORAGE] == true
@@ -83,10 +71,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     },
-                    onChooseDestination = { move ->
-                        pendingMove = move
-                        destinationPicker.launch(null)
-                    }
                 )
             }
         }

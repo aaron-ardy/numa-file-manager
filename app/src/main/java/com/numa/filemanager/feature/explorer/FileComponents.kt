@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.numa.filemanager.core.database.FileTagLabel
+import com.numa.filemanager.core.designsystem.LocalAppTheme
 import com.numa.filemanager.core.filesystem.FileSystemItem
 import java.text.DateFormat
 import java.util.Date
@@ -67,7 +68,11 @@ fun FileRow(
     onPin: () -> Unit,
     onDelete: () -> Unit,
     onShare: () -> Unit = {},
-    onRename: () -> Unit = {}
+    onRename: () -> Unit = {},
+    onCopy: () -> Unit = {},
+    onCut: () -> Unit = {},
+    showSelectionControl: Boolean = true,
+    showActions: Boolean = true
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     Surface(
@@ -104,18 +109,22 @@ fun FileRow(
                     }
                 }
             }
-            IconButton(onClick = onSelect) {
-                Icon(if (selected) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, contentDescription = if (selected) "Deselect" else "Select")
+            if (showSelectionControl) {
+                IconButton(onClick = onSelect) {
+                    Icon(if (selected) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, contentDescription = if (selected) "Deselect" else "Select")
+                }
             }
-            Box {
+            if (showActions) Box {
                 IconButton(onClick = { menuExpanded = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "File actions") }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(text = { Text("Quick peek") }, onClick = { menuExpanded = false; onQuickPeek() })
-                    if (!file.isDirectory) DropdownMenuItem(text = { Text("Edit tags") }, onClick = { menuExpanded = false; onEditTags() })
                     if (!file.isDirectory) DropdownMenuItem(text = { Text("Rename") }, onClick = { menuExpanded = false; onRename() })
+                    if (!file.isDirectory) DropdownMenuItem(text = { Text("Edit tags") }, onClick = { menuExpanded = false; onEditTags() })
+                    DropdownMenuItem(text = { Text("Copy") }, onClick = { menuExpanded = false; onCopy() })
+                    DropdownMenuItem(text = { Text("Cut") }, onClick = { menuExpanded = false; onCut() })
                     if (!file.isDirectory) DropdownMenuItem(text = { Text("Share") }, onClick = { menuExpanded = false; onShare() })
                     if (file.isDirectory) DropdownMenuItem(text = { Text("Pin folder") }, onClick = { menuExpanded = false; onPin() })
-                    if (!file.isDirectory) DropdownMenuItem(text = { Text("Move to bin") }, onClick = { menuExpanded = false; onDelete() })
+                    DropdownMenuItem(text = { Text("Move to bin") }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
         }
@@ -131,12 +140,13 @@ fun FileThumbnail(file: FileSystemItem, modifier: Modifier = Modifier) {
         .size(256, 256)
         .allowRgb565(true)
         .build()
+    val theme = LocalAppTheme.current
     val background = when {
-        file.isDirectory -> Color(0xFFE8EDE8)
-        mime.startsWith("image/") -> Color(0xFFE9E3D9)
-        mime.startsWith("video/") -> Color(0xFFE4E9EF)
-        mime.startsWith("audio/") -> Color(0xFFEDE3EB)
-        else -> Color(0xFFECE8E1)
+        file.isDirectory -> theme.containerColor.copy(alpha = 0.7f)
+        mime.startsWith("image/") -> theme.secondaryColor.copy(alpha = 0.18f)
+        mime.startsWith("video/") -> theme.primaryColor.copy(alpha = 0.16f)
+        mime.startsWith("audio/") -> theme.secondaryColor.copy(alpha = 0.24f)
+        else -> theme.containerColor.copy(alpha = 0.45f)
     }
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(background), contentAlignment = Alignment.Center) {
         Icon(

@@ -1,7 +1,10 @@
 package com.numa.filemanager.feature.explorer
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,15 +19,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material.icons.outlined.Sell
-import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -45,25 +57,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import com.numa.filemanager.feature.app.NumaUiState
 import com.numa.filemanager.feature.app.NumaViewModel
+import com.numa.filemanager.feature.app.ClipboardMode
 import com.numa.filemanager.core.filesystem.CategoryMatcher
 
 private val categories = listOf("documents", "videos", "images", "audio")
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExplorerScreen(
     state: NumaUiState,
     viewModel: NumaViewModel,
     onRequestAllFilesAccess: () -> Unit,
-    onChooseDestination: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var filterMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var fileTypeMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var scopeMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var multiSelectMode by rememberSaveable { mutableStateOf(false) }
     var sortOption by rememberSaveable { mutableStateOf("date_newest") }
 
     Column(modifier.fillMaxSize()) {
@@ -103,7 +122,7 @@ fun ExplorerScreen(
             value = state.query,
             onValueChange = viewModel::setQuery,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
-            placeholder = { Text("Search this folder") },
+            placeholder = { Text(if (state.wholeStorageSearch) "Search the whole system" else "Search in this folder") },
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             trailingIcon = {
                 androidx.compose.foundation.layout.Box {
@@ -129,54 +148,145 @@ fun ExplorerScreen(
             shape = RoundedCornerShape(16.dp)
         )
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (state.wholeStorageSearch) "Whole storage" else "This folder", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Box(
+                Modifier.size(48.dp).combinedClickable(
+                    onClick = { multiSelectMode = !multiSelectMode; if (!multiSelectMode) viewModel.clearSelection() },
+                    onLongClick = { android.widget.Toast.makeText(context, "Select multiple", android.widget.Toast.LENGTH_SHORT).show() }
+                )
+            ) {
+                Icon(Icons.Outlined.CheckCircleOutline, contentDescription = if (multiSelectMode) "Close multi-select" else "Select files", modifier = Modifier.align(Alignment.Center))
+            }
             Spacer(Modifier.weight(1f))
-            androidx.compose.foundation.layout.Box {
-                IconButton(onClick = { filterMenuExpanded = true }) {
-                    Icon(Icons.Outlined.Tune, contentDescription = "Filter and sort files")
-                }
-                DropdownMenu(expanded = filterMenuExpanded, onDismissRequest = { filterMenuExpanded = false }) {
-                    Text("SORT BY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                    listOf(
-                        "date_newest" to "Date - Newest first",
-                        "date_oldest" to "Date - Oldest first",
-                        "size_smallest" to "Size - Smallest first",
-                        "size_largest" to "Size - Largest first"
-                    ).forEach { (value, label) ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.layout.Box {
+                    Box(
+                        Modifier.size(48.dp).combinedClickable(
+                            role = Role.Button,
+                            onClick = {
+                                filterMenuExpanded = true
+                                sortMenuExpanded = false
+                            },
+                            onLongClick = {
+                                android.widget.Toast.makeText(context, "Filter by", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.FilterAlt, contentDescription = "Filter by")
+                    }
+                    DropdownMenu(expanded = filterMenuExpanded, onDismissRequest = { filterMenuExpanded = false }) {
+                        Text("FILTER BY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         DropdownMenuItem(
-                            text = { Text(if (sortOption == value) "Selected: $label" else label) },
-                            onClick = { sortOption = value; filterMenuExpanded = false }
+                            text = { Text("File type") },
+                            onClick = {
+                                filterMenuExpanded = false
+                                fileTypeMenuExpanded = true
+                            }
                         )
+                        DropdownMenuItem(
+                            text = { Text("Tags") },
+                            onClick = {
+                                filterMenuExpanded = false
+                                viewModel.openTagFilter()
+                            }
+                        )
+                    }
+                    DropdownMenu(expanded = fileTypeMenuExpanded, onDismissRequest = { fileTypeMenuExpanded = false }) {
+                        Text("FILE TYPE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        listOf(
+                            "All" to null,
+                            "Documents" to "documents",
+                            "Videos" to "videos",
+                            "Images" to "images",
+                            "Audio" to "audio"
+                        ).forEach { (label, category) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    viewModel.setCategory(category)
+                                    fileTypeMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                androidx.compose.foundation.layout.Box {
+                    Box(
+                        Modifier.size(48.dp).combinedClickable(
+                            role = Role.Button,
+                            onClick = {
+                                sortMenuExpanded = true
+                                filterMenuExpanded = false
+                            },
+                            onLongClick = {
+                                android.widget.Toast.makeText(context, "Sort by", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.Sort, contentDescription = "Sort by")
+                    }
+                    DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                        Text("SORT BY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        listOf(
+                            Triple("date", if (sortOption == "date_oldest") "Date - Oldest first" else "Date - Newest first", sortOption == "date_oldest"),
+                            Triple("name", if (sortOption == "name_descending") "Name - Descending" else "Name - Ascending", sortOption == "name_descending"),
+                            Triple("size", if (sortOption == "size_smallest") "Size - Smallest first" else "Size - Biggest first", sortOption == "size_smallest")
+                        ).forEach { (value, label, descending) ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(label, modifier = Modifier.weight(1f))
+                                        Icon(if (descending) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    val next = when (value) {
+                                        "date" -> if (sortOption == "date_newest") "date_oldest" else "date_newest"
+                                        "name" -> if (sortOption == "name_ascending") "name_descending" else "name_ascending"
+                                        else -> if (sortOption == "size_largest") "size_smallest" else "size_largest"
+                                    }
+                                    sortOption = next
+                                    sortMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
-            IconButton(onClick = viewModel::openTagFilter) {
-                Icon(Icons.Outlined.Sell, contentDescription = "Filter by tags")
-            }
-        }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            FilterChip(selected = state.category == null, onClick = { viewModel.setCategory(null) }, label = { Text("All") })
-            categories.forEach { category ->
-                FilterChip(selected = state.category == category, onClick = { viewModel.setCategory(category) }, label = { Text(category.replaceFirstChar(Char::uppercase)) })
-            }
         }
 
-        if (state.selectedUris.isNotEmpty()) {
+        if (state.selectedUris.isNotEmpty() || state.pendingFileOperation != null) {
+            val selectedCount = state.pendingFileOperation?.files?.size ?: state.selectedUris.size
+            val selectedLabel = if (selectedCount == 1) "1 item selected" else "$selectedCount items selected"
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp), shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${state.selectedUris.size} selected", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    IconButton(onClick = {
-                        viewModel.selectFilesForTags(
-                            displayedItems.filter { it.uri.toString() in state.selectedUris }.map { it.document }
-                        )
-                    }) { Icon(Icons.Outlined.Sell, contentDescription = "Tag selected file") }
-                    IconButton(onClick = { onChooseDestination(false) }) { Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy selected files") }
-                    IconButton(onClick = { onChooseDestination(true) }) { Icon(Icons.Outlined.DriveFileMove, contentDescription = "Move selected files") }
-                    IconButton(onClick = {
-                        viewModel.requestDeleteSelected(
-                            displayedItems.filter { it.uri.toString() in state.selectedUris && !it.isDirectory }.map { it.document }
-                        )
-                    }) { Icon(Icons.Outlined.DeleteOutline, contentDescription = "Move selected files to bin") }
+                    Text(
+                        selectedLabel,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    if (state.pendingFileOperation != null) {
+                        IconButton(onClick = viewModel::pasteIntoCurrentFolder) { Icon(Icons.Outlined.ContentPaste, contentDescription = "Paste files here") }
+                        IconButton(onClick = viewModel::cancelPendingFileOperation) { Icon(Icons.Outlined.Close, contentDescription = "Cancel copy or move") }
+                    } else {
+                        IconButton(onClick = {
+                            displayedItems.firstOrNull { it.uri.toString() in state.selectedUris }?.document?.let(viewModel::requestRename)
+                        }) { Icon(Icons.Outlined.Edit, contentDescription = "Rename selected file") }
+                        IconButton(onClick = {
+                            viewModel.selectFilesForTags(displayedItems.filter { it.uri.toString() in state.selectedUris }.map { it.document })
+                        }) { Icon(Icons.Outlined.Sell, contentDescription = "Tag selected files") }
+                        IconButton(onClick = { viewModel.stageSelection(ClipboardMode.COPY) }) { Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy selected files") }
+                        IconButton(onClick = { viewModel.stageSelection(ClipboardMode.CUT) }) { Icon(Icons.Outlined.ContentCut, contentDescription = "Cut selected files") }
+                        IconButton(onClick = {
+                            viewModel.shareFiles(displayedItems.filter { it.uri.toString() in state.selectedUris }.map { it.document })
+                        }) { Icon(Icons.Outlined.Share, contentDescription = "Share selected files") }
+                        IconButton(onClick = {
+                            viewModel.requestDeleteSelected(
+                                displayedItems.filter { it.uri.toString() in state.selectedUris && !it.isDirectory }.map { it.document }
+                            )
+                        }) { Icon(Icons.Outlined.DeleteOutline, contentDescription = "Move selected files to bin") }
+                    }
                 }
             }
         }
@@ -192,6 +302,8 @@ fun ExplorerScreen(
             }
             val sorted = when (sortOption) {
                 "date_oldest" -> visible.sortedBy { it.lastModified }
+                "name_ascending" -> visible.sortedBy { it.name.lowercase() }
+                "name_descending" -> visible.sortedByDescending { it.name.lowercase() }
                 "size_smallest" -> visible.sortedBy { it.size }
                 "size_largest" -> visible.sortedByDescending { it.size }
                 else -> visible.sortedByDescending { it.lastModified }
@@ -219,7 +331,10 @@ fun ExplorerScreen(
                             file = file,
                             tags = state.fileTags[uriKey].orEmpty(),
                             selected = uriKey in state.selectedUris,
-                            onClick = { if (state.selectedUris.isEmpty()) viewModel.openFile(file.document) else viewModel.toggleSelection(file.document) },
+                            onClick = {
+                                if (multiSelectMode && !file.isDirectory) viewModel.toggleSelection(file.document)
+                                else viewModel.openFile(file.document)
+                            },
                             onLongClick = { viewModel.showQuickPeek(file.document) },
                             onSelect = { viewModel.toggleSelection(file.document) },
                             onQuickPeek = { viewModel.showQuickPeek(file.document) },
@@ -227,7 +342,10 @@ fun ExplorerScreen(
                             onPin = { viewModel.pin(file.document) },
                             onDelete = { viewModel.requestDelete(file.document) },
                             onShare = { viewModel.shareFile(file.document) },
-                            onRename = { viewModel.requestRename(file.document) }
+                            onRename = { viewModel.requestRename(file.document) },
+                            onCopy = { viewModel.stageFiles(listOf(file.document), ClipboardMode.COPY) },
+                            onCut = { viewModel.stageFiles(listOf(file.document), ClipboardMode.CUT) },
+                            showSelectionControl = multiSelectMode
                         )
                     }
                 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +70,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
 import com.numa.filemanager.core.designsystem.AppTheme
@@ -89,8 +91,7 @@ fun NumaApp(
     viewModel: NumaViewModel,
     theme: AppTheme,
     onThemeSelected: (AppTheme) -> Unit,
-    onRequestAllFilesAccess: () -> Unit,
-    onChooseDestination: (Boolean) -> Unit
+    onRequestAllFilesAccess: () -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -155,11 +156,12 @@ fun NumaApp(
                             OutlinedTextField(
                                 value = state.homeQuery,
                                 onValueChange = viewModel::setHomeQuery,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
                                 placeholder = { Text("Search all files") },
                                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                                 singleLine = true,
-                                shape = MaterialTheme.shapes.large
+                                shape = RoundedCornerShape(18.dp)
                             )
                         } else if (state.activeCategory != null) {
                             Text(CategoryMatcher.label(state.activeCategory), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -189,7 +191,12 @@ fun NumaApp(
                 )
             },
             bottomBar = {
-                NavigationBar {
+                NavigationBar(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    tonalElevation = 0.dp
+                ) {
                     listOf(
                         Destination.Home to Icons.Outlined.Home,
                         Destination.Tags to Icons.Outlined.Sell,
@@ -199,7 +206,8 @@ fun NumaApp(
                             selected = state.destination == destination,
                             onClick = { viewModel.selectDestination(destination) },
                             icon = { Icon(icon, contentDescription = destination.label) },
-                            label = { Text(destination.label) }
+                            label = { Text(destination.label) },
+                            alwaysShowLabel = true
                         )
                     }
                 }
@@ -213,7 +221,7 @@ fun NumaApp(
                     else -> DashboardScreen(state, viewModel, onRequestAllFilesAccess, Modifier.padding(contentPadding))
                 }
                 Destination.Tags -> TagManagementScreen(state, viewModel, Modifier.padding(contentPadding))
-                Destination.Files -> ExplorerScreen(state, viewModel, onRequestAllFilesAccess, onChooseDestination, Modifier.padding(contentPadding))
+                Destination.Files -> ExplorerScreen(state, viewModel, onRequestAllFilesAccess, Modifier.padding(contentPadding))
                 Destination.Bin -> BinScreen(state, viewModel, Modifier.padding(contentPadding))
             }
         }
@@ -235,14 +243,28 @@ fun NumaApp(
         }
     }
     state.renameFile?.let { file ->
-        var name by remember(file.uri) { mutableStateOf(file.name.orEmpty()) }
+        val fullName = file.name.orEmpty()
+        val extension = fullName.substringAfterLast('.', missingDelimiterValue = "").takeIf { it.isNotBlank() }?.let { ".$it" } ?: ""
+        val baseName = fullName.substringBeforeLast('.', missingDelimiterValue = fullName)
+        var name by remember(file.uri) { mutableStateOf(baseName) }
         AlertDialog(
             onDismissRequest = viewModel::dismissRename,
             title = { Text("Rename file") },
             text = {
-                OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("File name") })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        label = { Text("File name") }
+                    )
+                    if (extension.isNotEmpty()) {
+                        Text(extension, modifier = Modifier.padding(start = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             },
-            confirmButton = { TextButton(onClick = { viewModel.rename(file, name) }, enabled = name.isNotBlank()) { Text("Save") } },
+            confirmButton = { TextButton(onClick = { viewModel.rename(file, "$name$extension") }, enabled = name.isNotBlank()) { Text("Save") } },
             dismissButton = { TextButton(onClick = viewModel::dismissRename) { Text("Cancel") } }
         )
     }
@@ -259,6 +281,19 @@ fun NumaApp(
             dismissButton = { TextButton(onClick = viewModel::dismissConfirmation) { Text("Cancel") } }
         )
     }
+    state.fileConflict?.let { conflict ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelPendingFileOperation,
+            title = { Text("File already exists") },
+            text = { Text("file name ${conflict.fileName} already exists in this folder") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.resolveFileConflict(true) }) { Text("Replace the file") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.resolveFileConflict(false) }) { Text("Skip") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -271,6 +306,7 @@ private fun DrawerContent(
     onPinnedFolder: (String) -> Unit,
     onUnpinFolder: (String, String) -> Unit
 ) {
+    var themesExpanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             Image(
@@ -292,6 +328,22 @@ private fun DrawerContent(
         }
         DrawerItem("Home", Icons.Outlined.Home, state.destination == Destination.Home) { onDestination(Destination.Home) }
         DrawerItem("Tags", Icons.Outlined.Sell, state.destination == Destination.Tags) { onDestination(Destination.Tags) }
+        DrawerItem("Themes", Icons.Outlined.Palette, themesExpanded) { themesExpanded = !themesExpanded }
+        if (themesExpanded) {
+            Column(Modifier.padding(start = 12.dp)) {
+                AppThemeRegistry.presets.forEach { preset ->
+                    NavigationDrawerItem(
+                        label = { Text(preset.name, modifier = Modifier.weight(1f)) },
+                        selected = theme.id == preset.id,
+                        onClick = { onThemeSelected(preset) },
+                        badge = { if (theme.id == preset.id) Text("selected", style = MaterialTheme.typography.labelSmall) },
+                        icon = { BoxMark(color = preset.primaryColor, size = 18.dp) },
+                        modifier = Modifier.padding(vertical = 1.dp),
+                        colors = NavigationDrawerItemDefaults.colors()
+                    )
+                }
+            }
+        }
         DrawerItem("Recycle bin", Icons.Outlined.DeleteOutline, state.destination == Destination.Bin) { onDestination(Destination.Bin) }
         HorizontalDivider(Modifier.padding(vertical = 14.dp))
         Text("PINNED FOLDERS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
@@ -303,27 +355,6 @@ private fun DrawerContent(
                     DrawerItem(folder.folderName, Icons.Outlined.FolderOpen, false, Modifier.weight(1f)) { onPinnedFolder(folder.folderPath) }
                     IconButton(onClick = { onUnpinFolder(folder.folderPath, folder.folderName) }) {
                         Icon(Icons.Outlined.Close, contentDescription = "Unpin ${folder.folderName}")
-                    }
-                }
-            }
-        }
-        HorizontalDivider(Modifier.padding(vertical = 14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 14.dp, bottom = 8.dp)) {
-            Icon(Icons.Outlined.Palette, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(8.dp))
-            Text("THEMES", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppThemeRegistry.presets.forEach { preset ->
-                Surface(
-                    modifier = Modifier.width(84.dp).clickable { onThemeSelected(preset) },
-                    shape = MaterialTheme.shapes.small,
-                    color = if (theme.id == preset.id) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.Start) {
-                        BoxMark(color = preset.primaryColor, size = 18.dp)
-                        Spacer(Modifier.height(7.dp))
-                        Text(preset.name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -349,6 +380,6 @@ private fun BoxMark(color: Color = MaterialTheme.colorScheme.primary, size: andr
         Modifier.size(size).clip(CircleShape).background(color),
         contentAlignment = Alignment.Center
     ) {
-        Text("L", color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Icon(Icons.Outlined.Palette, contentDescription = null, tint = Color.White, modifier = Modifier.size(size / 2))
     }
 }
