@@ -2,6 +2,9 @@
 .kotlin/
 .idea/
 local.properties
+app/signing.properties
+*.jks
+*.keystore
 **/build/
 captures/
 .externalNativeBuild/
