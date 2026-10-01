@@ -109,7 +109,7 @@ data class NumaUiState(
 class NumaViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = (application as NumaApplication).database.numaDao()
     private val fileSystem = FileSystemRepository(application, dao)
-    private val tagBackupStore = TagBackupStore()
+    private val tagBackupStore = TagBackupStore(application)
     private val preferences = application.getSharedPreferences("numa_storage", Application.MODE_PRIVATE)
     private var rootDocument: DocumentFile? = null
     private var currentFolder: DocumentFile? = null

@@ -260,12 +260,16 @@ fun ExplorerScreen(
             val selectedCount = state.pendingFileOperation?.files?.size ?: state.selectedUris.size
             val selectedLabel = if (selectedCount == 1) "1 item selected" else "$selectedCount items selected"
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp), shape = RoundedCornerShape(14.dp)) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        selectedLabel,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(selectedLabel, style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     if (state.pendingFileOperation != null) {
                         IconButton(onClick = viewModel::pasteIntoCurrentFolder) { Icon(Icons.Outlined.ContentPaste, contentDescription = "Paste files here") }
                         IconButton(onClick = viewModel::cancelPendingFileOperation) { Icon(Icons.Outlined.Close, contentDescription = "Cancel copy or move") }
@@ -286,6 +290,7 @@ fun ExplorerScreen(
                                 displayedItems.filter { it.uri.toString() in state.selectedUris && !it.isDirectory }.map { it.document }
                             )
                         }) { Icon(Icons.Outlined.DeleteOutline, contentDescription = "Move selected files to bin") }
+                    }
                     }
                 }
             }

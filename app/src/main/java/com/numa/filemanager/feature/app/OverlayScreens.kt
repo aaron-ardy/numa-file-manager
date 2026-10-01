@@ -52,31 +52,35 @@ import com.numa.filemanager.feature.explorer.formatModified
 
 @Composable
 fun TagFilterSheet(state: NumaUiState, viewModel: NumaViewModel) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
-        Text("Filter by tags", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Text("Files with any selected tag", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(12.dp))
-        when {
-            state.tags.isEmpty() -> Text(
-                "No tags created yet.",
-                modifier = Modifier.padding(vertical = 20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            state.tagFilterLoading -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
-            else -> state.tags.forEach { tag ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    val fallbackColor = MaterialTheme.colorScheme.primary
-                    val color = remember(tag.colorHex) { runCatching { Color(AndroidColor.parseColor(tag.colorHex)) }.getOrDefault(fallbackColor) }
-                    Surface(Modifier.size(14.dp), color = color, shape = CircleShape) {}
-                    Text(tag.name, modifier = Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
-                    Checkbox(
-                        checked = tag.id in state.selectedTagFilterIds,
-                        onCheckedChange = { viewModel.toggleTagFilter(tag) }
-                    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().heightIn(max = maxHeight * 0.9f).padding(horizontal = 22.dp, vertical = 8.dp)) {
+            Text("Filter by tags", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("Files with any selected tag", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(12.dp))
+            when {
+                state.tags.isEmpty() -> Text(
+                    "No tags created yet.",
+                    modifier = Modifier.padding(vertical = 20.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                state.tagFilterLoading -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
+                else -> LazyColumn(Modifier.weight(1f)) {
+                    items(state.tags, key = { it.id }) { tag ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            val fallbackColor = MaterialTheme.colorScheme.primary
+                            val color = remember(tag.colorHex) { runCatching { Color(AndroidColor.parseColor(tag.colorHex)) }.getOrDefault(fallbackColor) }
+                            Surface(Modifier.size(14.dp), color = color, shape = CircleShape) {}
+                            Text(tag.name, modifier = Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.bodyLarge)
+                            Checkbox(
+                                checked = tag.id in state.selectedTagFilterIds,
+                                onCheckedChange = { viewModel.toggleTagFilter(tag) }
+                            )
+                        }
+                    }
                 }
             }
+            Spacer(Modifier.height(20.dp))
         }
-        Spacer(Modifier.height(20.dp))
     }
 }
 

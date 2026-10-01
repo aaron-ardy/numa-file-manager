@@ -1,17 +1,22 @@
 package com.numa.filemanager.core.database
 
+import android.content.Context
 import android.os.Environment
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-class TagBackupStore {
-    private val backupFile: File
-        get() = File(Environment.getExternalStorageDirectory(), ".numa-filemanager/tags.json")
+class TagBackupStore(context: Context) {
+    private val backupFile = File(context.getExternalFilesDir(null) ?: context.filesDir, "tags.json")
+    private val legacyBackupFile = File(Environment.getExternalStorageDirectory(), ".numa-filemanager/tags.json")
 
     fun read(): TagBackupSnapshot? = runCatching {
-        if (!backupFile.isFile) return null
-        val data = JSONObject(backupFile.readText())
+        val source = when {
+            backupFile.isFile -> backupFile
+            legacyBackupFile.isFile -> legacyBackupFile
+            else -> return null
+        }
+        val data = JSONObject(source.readText())
         val tags = buildList {
             val array = data.optJSONArray("tags") ?: JSONArray()
             for (index in 0 until array.length()) {
@@ -33,7 +38,9 @@ class TagBackupStore {
                 add(FileTagCrossRef(fileUri = item.getString("fileUri"), tagId = item.getInt("tagId")))
             }
         }
-        TagBackupSnapshot(tags, references)
+        TagBackupSnapshot(tags, references).also {
+            if (source == legacyBackupFile) migrateLegacyBackup()
+        }
     }.getOrNull()
 
     fun write(tags: List<TagEntity>, references: List<FileTagCrossRef>): Boolean = runCatching {
@@ -63,8 +70,28 @@ class TagBackupStore {
         temporary.writeText(JSONObject().put("version", 1).put("tags", tagArray).put("fileTags", referenceArray).toString())
         if (backupFile.exists() && !backupFile.delete()) return false
         check(temporary.renameTo(backupFile)) { "Could not commit tag backup." }
+        removeLegacyBackup()
         true
     }.getOrDefault(false)
+
+    private fun migrateLegacyBackup() {
+        runCatching {
+            val directory = backupFile.parentFile ?: return
+            if (!directory.exists() && !directory.mkdirs()) return
+            if (!backupFile.exists()) legacyBackupFile.copyTo(backupFile)
+            if (backupFile.isFile) removeLegacyBackup()
+        }
+    }
+
+    private fun removeLegacyBackup() {
+        runCatching {
+            if (legacyBackupFile.exists() && !legacyBackupFile.delete()) return
+            val directory = legacyBackupFile.parentFile ?: return
+            val noMedia = File(directory, ".nomedia")
+            if (noMedia.exists()) noMedia.delete()
+            if (directory.list().isNullOrEmpty()) directory.delete()
+        }
+    }
 }
 
 data class TagBackupSnapshot(
