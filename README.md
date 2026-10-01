@@ -1,8 +1,8 @@
-# Lumina File Manager
+# Numa File Manager
 
 > ⚠️ Work in progress
 
-Lumina helps you browse, organize, and find files on your Android phone. It includes file-only color tags, pinned folders, recently opened files, category browsing, and a recycle bin. Documents and media open with compatible apps installed on your device.
+Numa helps you browse, organize, and find files on your Android phone. It includes file-only color tags, pinned folders, recently opened files, category browsing, and a recycle bin. Documents and media open with compatible apps installed on your device.
 
 ## System Requirements
 
@@ -12,4 +12,4 @@ Lumina helps you browse, organize, and find files on your Android phone. It incl
 
 On Android 11 and newer, device-wide browsing requires **Allow access to manage all files** in Android Settings. Earlier Android versions use their available storage permissions.
 
-Custom tags are backed up in shared storage so they can be restored if Lumina's app data is cleared. Clearing shared storage also removes that backup. Permanent overwrite depends on storage support, and flash storage cannot guarantee physical erasure.
+Custom tags are backed up in shared storage so they can be restored if Numa's app data is cleared. Clearing shared storage also removes that backup. Permanent overwrite depends on storage support, and flash storage cannot guarantee physical erasure.

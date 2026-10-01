@@ -5,11 +5,11 @@
 
     <application
         android:allowBackup="true"
-        android:name=".LuminaApplication"
+        android:name=".NumaApplication"
         android:requestLegacyExternalStorage="true"
-        android:icon="@drawable/lumina_app_icon"
-        android:label="Lumina"
-        android:roundIcon="@drawable/lumina_app_icon"
+        android:icon="@drawable/numa_app_icon"
+        android:label="Numa"
+        android:roundIcon="@drawable/numa_app_icon"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity

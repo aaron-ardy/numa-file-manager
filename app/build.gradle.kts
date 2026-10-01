@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.lumina.filemanager"
+    namespace = "com.numa.filemanager"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.lumina.filemanager"
+        applicationId = "com.numa.filemanager"
         minSdk = 24
         targetSdk = 35
         versionCode = 1

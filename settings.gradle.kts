@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LuminaFileManager"
+rootProject.name = "NumaFileManager"
 include(":app")
